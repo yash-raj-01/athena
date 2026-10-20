@@ -18,6 +18,18 @@ function createWindow() {
 ipcMain.handle("full-screen", () => {
     win.kiosk = true;
 });
+
+let endTime = null;
+
+ipcMain.handle("start-test", () => {
+    endTime = Date.now() + 60 * 60 * 1000;
+});
+
+ipcMain.handle("get-time", () => {
+    if (!endTime) return 0;
+    return Math.max(0, endTime - Date.now());
+});
+
 ipcMain.handle("show-rules", async () => {
     const res = await dialog.showMessageBox(win, {
         type: "info",
