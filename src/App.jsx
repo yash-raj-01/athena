@@ -1,122 +1,127 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useEffect, useRef, useState } from "react";
+import "./App.css";
 
 function App() {
-  const [count, setCount] = useState(0)
+  const videoRef = useRef(null);
+  const imageCaptureRef = useRef(null);
+
+  const [time, setTime] = useState(0);
+  const [started, setStarted] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+
+  // 1. Fetch remaining time from Main Process
+  async function getLapsedTime() {
+    const currTime = await window.electronAPI.getRemainingTime();
+    setTime(currTime);
+  }
+
+  useEffect(() => {
+    if (!started) return;
+    const interval = setInterval(() => {
+      getLapsedTime();
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [started]);
+
+  // 2. Configure Webcam
+  async function getCamera() {
+    const videoData = await navigator.mediaDevices.getUserMedia({
+      video: true,
+    });
+
+    videoRef.current.srcObject = videoData;
+    const track = videoData.getVideoTracks()[0];
+    imageCaptureRef.current = new ImageCapture(track);
+    setCameraReady(true);
+  }
+
+  // 3. Capture Photo & send to Node.js backend
+  async function clickPhoto() {
+    if (!imageCaptureRef.current) return;
+    const blob = await imageCaptureRef.current.takePhoto();
+    const buffer = await blob.arrayBuffer();
+    await window.electronAPI.savePhoto(buffer);
+  }
+
+  useEffect(() => {
+    if (!started) return;
+    const id = setInterval(() => {
+      clickPhoto();
+    }, 5000);
+    return () => clearInterval(id);
+  }, [started]);
+
+  // 4. Kiosk Mode & Start Exam
+  async function getFullscreen() {
+    await window.electronAPI.setFullScreen();
+  }
+
+  async function startTest() {
+    const response = await window.electronAPI.showExamRules();
+    if (response === 1) { // Clicked Accept
+      await window.electronAPI.startTest();
+      setStarted(true);
+    }
+  }
+
+  function formatTimeLeft(ms) {
+    const seconds = Math.floor((ms / 1000) % 60).toString().padStart(2, "0");
+    const minutes = Math.floor((ms / (1000 * 60)) % 60).toString().padStart(2, "0");
+    const hours = Math.floor(ms / (1000 * 60 * 60)).toString().padStart(2, "0");
+    return `${hours}:${minutes}:${seconds}`;
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <div className="page-container">
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        className={cameraReady ? "video-preview" : "hidden-video"}
+      />
+
+      <div className="header-section">
+        <h1>Athena Exam Portal</h1>
+        <p>Complete the required permissions before beginning your test.</p>
+      </div>
+
+      <div className="card-container">
+        <div className="permission-item">
+          <div className="permission-content">
+            <h3>1. Configure Camera</h3>
+            <p>Your camera must be enabled for periodic proctor snapshots.</p>
+            <button onClick={getCamera} className="btn btn-dark" disabled={cameraReady}>
+              {cameraReady ? "Camera Active ✓" : "Enable Camera"}
+            </button>
+          </div>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
+
+        <div className="divider" />
+
+        <div className="permission-item">
+          <div className="permission-content">
+            <h3>2. Fullscreen Mode</h3>
+            <p>Lock the application window to prevent tab switching.</p>
+            <button onClick={getFullscreen} className="btn btn-blue">
+              Lock Fullscreen
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
+      </div>
+
+      <div className="bottom-actions">
+        <button onClick={startTest} className="btn btn-primary" disabled={!cameraReady || started}>
+          {started ? "Exam in Progress" : "Start Exam"}
         </button>
-      </section>
+      </div>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+      {started && (
+        <div className="timer-badge">
+          Time Left: <strong>{formatTimeLeft(time)}</strong>
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      )}
+    </div>
+  );
 }
 
-export default App
+export default App;
